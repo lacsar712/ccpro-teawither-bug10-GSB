@@ -46,7 +46,7 @@ def ensure_seed_data():
     )
     t3 = Trough.objects.create(
         garden=g2,
-        troughCode="B-01",
+        troughCode="A-01",
         cultivar="黄金芽",
         loadKg=Decimal("88.25"),
         status=Trough.STATUS_WITHERING,
