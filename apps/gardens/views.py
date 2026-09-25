@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
@@ -15,24 +16,13 @@ from django.views.generic import (
 from .forms import GardenForm, TroughForm, WitherBatchForm
 from .models import Garden, Trough, WitherBatch
 
-def _buggy_garden_stats():
-    from collections import Counter
-    c = Counter()
-    for t in Trough.objects.all():
-        g = _garden_by_trough_code().get(t.troughCode)
-        if g:
-            c[g.name] += 1
-    return dict(c)
 
-
-def _garden_by_trough_code():
-    # BUG: 按槽号全局字典，后写覆盖先写 → 跨园同号串园名
-    m = {}
-    for t in Trough.objects.select_related("garden"):
-        m[t.troughCode] = t.garden
-    return m
-
-
+def _garden_trough_stats():
+    # 按茶园主键分组计数，绝不按槽号全局匹配
+    return {
+        g.name: g.trough_count
+        for g in Garden.objects.annotate(trough_count=Count("troughs"))
+    }
 
 
 def _wants_htmx(request):
@@ -52,8 +42,8 @@ def home(request):
         "loading_count": Trough.objects.filter(
             status=Trough.STATUS_LOADING
         ).count(),
-        # BUG: 分园计数按 troughCode 聚合丢园维
-        "garden_trough_stats": _buggy_garden_stats(),
+        # 分园计数按槽所属园主键分组
+        "garden_trough_stats": _garden_trough_stats(),
     }
     return render(request, "home.html", context)
 
@@ -122,12 +112,8 @@ class TroughListView(LoginRequiredMixin, ListView):
     context_object_name = "troughs"
 
     def get_queryset(self):
-        rows = list(Trough.objects.select_related("garden").all())
-        code_map = _garden_by_trough_code()
-        for t in rows:
-            g = code_map.get(t.troughCode)
-            t.display_garden_name = g.name if g else "?"
-        return rows
+        # 茶园名直接走外键，不按槽号全局补全
+        return Trough.objects.select_related("garden").all()
 
     def get(self, request, *args, **kwargs):
         self.object_list = self.get_queryset()
@@ -185,20 +171,12 @@ class BatchListView(LoginRequiredMixin, ListView):
         qs = WitherBatch.objects.select_related("trough", "trough__garden").all()
         garden = self.request.GET.get("garden")
         if garden:
-            # BUG: 按槽号子查询过滤，跨园同号串行
-            codes = Trough.objects.filter(garden__name=garden).values_list(
-                "troughCode", flat=True
-            )
-            qs = qs.filter(trough__troughCode__in=list(codes))
+            # 按槽所属园过滤，不用槽号全局匹配，避免跨园同号串行
+            qs = qs.filter(trough__garden__name=garden)
         return qs
 
     def get(self, request, *args, **kwargs):
         self.object_list = self.get_queryset()
-        code_map = _garden_by_trough_code()
-        for b in self.object_list:
-            # BUG: 展示园名按槽号字典补全
-            g = code_map.get(b.trough.troughCode)
-            b.display_garden_name = g.name if g else "?"
         if _wants_htmx(request):
             html = render_to_string(
                 "batches/_table.html",

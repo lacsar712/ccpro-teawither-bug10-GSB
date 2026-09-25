@@ -13,7 +13,7 @@
   <tbody>
     {% for t in troughs %}
     <tr>
-      <td>{{ t.display_garden_name|default:t.garden.name }}</td>
+      <td>{{ t.garden.name }}</td>
       <td>{{ t.troughCode }}</td>
       <td>{{ t.cultivar }}</td>
       <td>{{ t.loadKg }}</td>

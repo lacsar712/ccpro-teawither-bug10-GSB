@@ -92,3 +92,12 @@ def ensure_seed_data():
     )
     t4.status = Trough.STATUS_READY
     t4.save()
+
+    # 与一号园 t1 同槽号 A-01，验证展示/过滤/计数均按茶园主键区分
+    Trough.objects.create(
+        garden=g2,
+        troughCode="A-01",
+        cultivar="福鼎大白",
+        loadKg=Decimal("76.00"),
+        status=Trough.STATUS_LOADING,
+    )
